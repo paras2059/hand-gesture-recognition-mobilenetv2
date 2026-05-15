@@ -7,23 +7,57 @@ A end-to-end hand gesture recognition system built on the [LeapGestRecog](https:
 
 ## Results
 
-| Model | Validation Accuracy |
-|---|---|
-| Custom CNN (baseline) | 10.00% |
-| MobileNetV2 Transfer Learning | **100.00%** |
+| Model | Validation Accuracy | Notes |
+|---|---|---|
+| Custom CNN (baseline) | 10.00% | Collapses to predicting `04_fist_moved` for every sample |
+| **MobileNetV2 Transfer Learning** | **100.00%** | RGB input, ImageNet weights, two-phase fine-tuning |
 
-> The custom CNN uses grayscale input and trains from scratch. MobileNetV2 uses RGB input with ImageNet weights and two-phase fine-tuning — the performance gap illustrates the power of transfer learning on a relatively small IR dataset.
+> The custom CNN uses grayscale input and trains from scratch. MobileNetV2 uses RGB input with ImageNet weights and two-phase fine-tuning — the performance gap illustrates the power of transfer learning on a relatively small infrared dataset.
 
 ---
 
-## Grad-CAM Attention Maps
+## Visualizations
 
-The model's attention is visualized using Grad-CAM (with a mean-activation fallback for high-confidence cases where softmax gradients vanish). Red/yellow regions show where the network focuses when classifying each gesture.
+### Training History — MobileNetV2
+
+![MobileNetV2 Training History](mobilenetv2_transfer_learning_history.png)
+
+The combined Phase 1 + Phase 2 training curve (35 epochs total) shows two distinct phases:
+
+- **Epochs 1–15 (Phase 1 — head only):** Validation accuracy jumps to ~100% within the first 2 epochs. Both train and val loss fall rapidly toward zero. Val accuracy fluctuates slightly between epochs 2–10 as the learning rate adjusts, then stabilises near 1.0 by epoch 13.
+- **Epoch 15 transition (Phase 2 begins):** A sharp temporary spike in train loss (~0.33) and dip in train accuracy (~0.92) occurs as the top 50 MobileNetV2 layers are unfrozen and the optimizer restarts at lr=1e-5. Validation accuracy is unaffected, confirming the base features were already well-adapted.
+- **Epochs 16–35 (Phase 2 — fine-tuning):** Both losses converge smoothly to near zero. Training accuracy catches up to 100% with no sign of overfitting.
+
+---
+
+### Confusion Matrices
+
+#### MobileNetV2 — Perfect Classification
+
+![MobileNetV2 Confusion Matrix](mobilenetv2_confusion_matrix.png)
+
+A perfect 10×10 diagonal — every one of the 40 validation samples per class is correctly classified with zero misclassifications across all 10 gesture types. This confirms the 100% validation accuracy is genuine and not an artefact of class imbalance.
+
+#### Custom CNN — Single-Class Collapse
+
+![Custom CNN Confusion Matrix](custom_cnn_confusion_matrix.png)
+
+The entire `04_fist_moved` column is lit up — the CNN predicts this class for every single input regardless of the true label. This is a classic symptom of a model that failed to learn discriminative features, caused by:
+
+- Grayscale IR images lacking the colour channels that aid early-layer feature learning
+- Training from scratch requiring far more data than is available to generalise across 10 similar hand poses
+- The 10% accuracy exactly matching random chance for 10 balanced classes
+
+---
+
+### Grad-CAM Attention Maps
 
 ![Grad-CAM Results](gradcam_results.png)
 
+Attention maps are computed on the last `Conv_1` layer of MobileNetV2. A mean-activation fallback is applied automatically for high-confidence predictions where softmax gradients vanish. Red/yellow regions show where the network focuses when classifying each gesture.
+
 *Columns: Original infrared image | Grad-CAM heatmap | Blended overlay*
-*Title colour: cyan = correct prediction, red = incorrect*
+*Heatmap label shows `(Grad-CAM)` or `(Activation)` depending on which method was used*
 
 ---
 
@@ -60,8 +94,11 @@ hand-gesture-recognition/
 ├── hand_gesture_mobilenetv2.keras   # Saved MobileNetV2 model
 ├── hand_gesture_mobilenetv2.tflite  # Quantized TFLite (edge deployment)
 │
-├── gradcam_results.png              # Grad-CAM visualization output
-├── sample_gestures.png              # Dataset sample grid
+├── gradcam_results.png                        # Grad-CAM attention map output
+├── mobilenetv2_confusion_matrix.png           # Perfect diagonal — 100% accuracy
+├── custom_cnn_confusion_matrix.png            # Single-class collapse visualized
+├── mobilenetv2_transfer_learning_history.png  # Loss and accuracy curves
+├── sample_gestures.png                        # Dataset sample grid
 └── README.md
 ```
 
